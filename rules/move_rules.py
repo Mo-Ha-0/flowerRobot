@@ -29,17 +29,17 @@ class MoveRulesMixin:
         if not (1 <= new_rx <= gw and 1 <= new_ry <= gh):
             return
 
-        # قيد التكرار
-        h = state_hash(new_rx, new_ry, bq, pavs)
-        if h in self.visited:
-            return
-
         # قيد العمق
         if depth + 1 > self.max_depth:
             return
 
+        # قيد التكرار
+        h = state_hash(new_rx, new_ry, bq, pavs)
+        new_cost = cost + 1
+        if not self._remember_state(h, new_cost):
+            return
+
         # ── إعلان العقدة الجديدة ────────────────────────────
-        self.visited.add(h)
         new_id   = make_node_id(node_id, action)
         new_pavs = clone_pavilions(pavs)
 
@@ -52,7 +52,7 @@ class MoveRulesMixin:
             bouquets  = list(bq),
             pavilions = new_pavs,
             max_load  = ml,
-            cost      = cost + 1,
+            cost      = new_cost,
             depth     = depth + 1,
         )
         self.declare(new_node)

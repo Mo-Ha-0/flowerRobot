@@ -1,6 +1,8 @@
 *.md
-
+.agents
+.codex
 /__pycache__/
+*/__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -33,3 +35,4 @@ htmlcov/
 .dmypy.json
 dmypy.json
 .pytype/
+*.pdf

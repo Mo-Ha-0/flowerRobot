@@ -31,12 +31,25 @@ class FlowerExhibitionKE(
     def __init__(self, max_depth: int = 30, node_log: bool = False):
         super().__init__()
         self.visited        : set  = set()
+        self.best_cost      : dict = {}
         self.all_nodes      : list = []
         self.solution       : dict = None
         self.max_depth      : int  = max_depth
         self._node_log      : bool = node_log
         self.violations_log : list = []   # سجل انتهاكات القيود (مرحلة 4)
         reset_counter()
+
+    def _remember_state(self, state_key: str, cost: int) -> bool:
+        """
+        True إذا كانت الحالة جديدة أو وصلنا إليها بتكلفة أفضل.
+        هذا يمنع مساراً عميقاً في DFS من حجب المسار الأقصر لنفس الحالة.
+        """
+        old_cost = self.best_cost.get(state_key)
+        if old_cost is not None and old_cost <= cost:
+            return False
+        self.best_cost[state_key] = cost
+        self.visited.add(state_key)
+        return True
 
     # ── تسجيل العقد الجديدة ─────────────────────────────────
     def _log_node(self, node):

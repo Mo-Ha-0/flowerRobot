@@ -57,8 +57,8 @@ def generate_load_options(pavilions: list, max_load: int) -> list:
     """
     تولّد جميع خيارات التحميل الممكنة (لا تُعيد خيارات متطابقة).
     تُراعي:
-      - خيار أ: نفس اللون + أنواع مختلفة
-      - خيار ب: نفس النوع + ألوان مختلفة
+      - خيار أ: نفس اللون، بأي كميات مطلوبة لا تتجاوز max_load
+      - خيار ب: نفس النوع، بأي كميات مطلوبة لا تتجاوز max_load
       - الكمية القصوى: max_load
       - فائدة: كل باقة محمولة مطلوبة من جناح ما
     """
@@ -76,39 +76,37 @@ def generate_load_options(pavilions: list, max_load: int) -> list:
             seen.add(key)
             options.append(list(key))
 
-    # ── خيار ب: نفس النوع، ألوان مختلفة ──────────────────────
-    for ft, color_needs in by_type.items():
-        if not color_needs:
-            continue
+    def _generate_group(items: list):
+        """
+        يولّد كل التركيبات غير الفارغة لعناصر مجموعة واحدة.
+        items: [((flower_type, color), remaining_qty), ...]
+        """
+        ordered = sorted(items)
 
-        # التحميل الكامل: كل الألوان المحتاجة لهذا النوع
-        bq, total = [], 0
-        for color, qty in color_needs.items():
-            add = min(qty, max_load - total)
-            bq.extend([(ft, color)] * add)
-            total += add
-            if total >= max_load:
-                break
-        _add(bq)
+        def backtrack(index: int, current: list, total: int):
+            if index == len(ordered):
+                _add(current)
+                return
 
-        # لكل لون على حدة (تحميل جزئي — رحلة مخصصة للون)
-        for color, qty in color_needs.items():
-            _add([(ft, color)] * min(qty, max_load))
+            item, qty = ordered[index]
+            max_count = min(qty, max_load - total)
+            for count in range(max_count + 1):
+                next_current = current + [item] * count
+                backtrack(index + 1, next_current, total + count)
 
-    # ── خيار أ: نفس اللون، أنواع مختلفة ──────────────────────
-    for color, type_needs in by_color.items():
-        if len(type_needs) < 2:
-            continue          # يحتاج نوعَين مختلفَين على الأقل
+        backtrack(0, [], 0)
 
-        # تحميل كل الأنواع التي تحتاج هذا اللون
-        bq, total = [], 0
-        for ft, qty in type_needs.items():
-            add = min(qty, max_load - total)
-            bq.extend([(ft, color)] * add)
-            total += add
-            if total >= max_load:
-                break
-        _add(bq)
+    # ── خيار ب: نفس النوع، ألوان مختلفة أو لون واحد ───────────
+    for ft, color_needs in sorted(by_type.items()):
+        items = [((ft, color), qty)
+                 for color, qty in sorted(color_needs.items())]
+        _generate_group(items)
+
+    # ── خيار أ: نفس اللون، أنواع مختلفة أو نوع واحد ───────────
+    for color, type_needs in sorted(by_color.items()):
+        items = [((ft, color), qty)
+                 for ft, qty in sorted(type_needs.items())]
+        _generate_group(items)
 
     return options
 
@@ -253,12 +251,12 @@ class LoadUnloadRulesMixin:
     def load_rule(self, nid, rx, ry, bq, pavs, ml, cost, depth, wx, wy):
         options = generate_load_options(pavs, ml)
         for opt_bq in options:
+            new_cost = cost + 1
             if depth + 1 > self.max_depth:
                 break
             h = state_hash(rx, ry, opt_bq, pavs)
-            if h in self.visited:
+            if not self._remember_state(h, new_cost):
                 continue
-            self.visited.add(h)
             new_id   = make_node_id(nid, "load")
             # اسم العملية يوضّح ما تم تحميله
             types_loaded  = {bt for bt, bc in opt_bq}
@@ -276,7 +274,7 @@ class LoadUnloadRulesMixin:
                 bouquets = opt_bq,
                 pavilions= clone_pavilions(pavs),
                 max_load = ml,
-                cost     = cost + 1,
+                cost     = new_cost,
                 depth    = depth + 1,
             )
             self.declare(new_node)
@@ -316,9 +314,9 @@ class LoadUnloadRulesMixin:
         to_remove, updated_pav = compute_unload(bq, pav)
         new_bq, new_pavs = _apply_unload(bq, to_remove, pavs, updated_pav)
         h = state_hash(rx, ry, new_bq, new_pavs)
-        if h in self.visited:
+        new_cost = cost + 1
+        if not self._remember_state(h, new_cost):
             return
-        self.visited.add(h)
         new_id = make_node_id(nid, "unload")
         colors_done = sorted({bc for _, bc in to_remove})
         action_label = f"unload@{pav['id']}[{','.join(colors_done)}]"
@@ -331,7 +329,7 @@ class LoadUnloadRulesMixin:
             bouquets = new_bq,
             pavilions= new_pavs,
             max_load = ml,
-            cost     = cost + 1,
+            cost     = new_cost,
             depth    = depth + 1,
         )
         self.declare(new_node)
